@@ -1,0 +1,332 @@
+// Gera o HTML do cupom não fiscal de uma venda, no formato estilo térmico
+// (largura ~76mm) mas compatível também com impressão em folha comum (A4),
+// onde o conteúdo aparece centralizado.
+
+type ItemCupom = {
+  produto_nome?: string
+  codigo_barras?: string
+  quantidade: number
+  preco_unitario: number
+}
+
+type ParcelaCupom = {
+  numero: number
+  valor: number
+  data_vencimento: string
+  status: 'pendente' | 'pago' | 'inadimplente'
+}
+
+type StatusPagamentoCupom = 'pago' | 'pendente' | 'inadimplente' | 'parcelado'
+
+export type DadosCupomVenda = {
+  id: number
+  data: string
+  total: number
+  valor_pago: number
+  status_pagamento: StatusPagamentoCupom
+  data_vencimento: string | null
+  num_parcelas: number | null
+  cliente_nome?: string | null
+  cliente_telefone?: string | null
+  cliente_endereco?: string | null
+  cliente_cpf?: string | null
+  itens: ItemCupom[]
+  parcelas: ParcelaCupom[]
+}
+
+// Dados fixos da loja — pode ser ajustado conforme o estabelecimento.
+const LOJA = {
+  nome: 'GN MODAS',
+  cnpj: '',
+  endereco: '',
+  cidade: '',
+  telefone: '',
+  vendedor: ''
+}
+
+// Dados que aparecem no rodapé do cupom (placeholders genéricos —
+// substituir quando os dados oficiais do estabelecimento forem confirmados).
+const RODAPE_LOJA = {
+  nome: 'GN Modas',
+  razao_social: 'Razão Social Ltda. — ME',
+  cnpj: '00.000.000/0001-00',
+  endereco: 'Praça Claudemiro Lopes Bezerra - Mercado Central',
+  cidade: 'Pacoti-CE  62770-000'
+}
+
+const fmt = (valor: number): string =>
+  valor.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+
+const fmtDataHora = (iso: string): string =>
+  new Date(iso).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })
+
+const fmtDataCurta = (iso: string): string => {
+  // aceita YYYY-MM-DD ou ISO completo
+  const base = iso.length === 10 ? iso + 'T00:00' : iso
+  return new Date(base).toLocaleDateString('pt-BR')
+}
+
+const FORMA_PAGAMENTO: Record<StatusPagamentoCupom, string> = {
+  pago: 'À vista',
+  pendente: 'A prazo',
+  parcelado: 'Parcelado',
+  inadimplente: 'Em atraso'
+}
+
+const escapar = (s: string): string =>
+  s
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+
+export function gerarHtmlCupomVenda(venda: DadosCupomVenda): string {
+  const dataPedido = fmtDataHora(venda.data)
+  const numeroPedido = String(venda.id).padStart(3, '0')
+
+  const lojaLinhas: string[] = [
+    `<div class="loja-nome">${escapar(LOJA.nome)}</div>`
+  ]
+  if (LOJA.cnpj) lojaLinhas.push(`<div>CNPJ: ${escapar(LOJA.cnpj)}</div>`)
+  if (LOJA.endereco) lojaLinhas.push(`<div>${escapar(LOJA.endereco)}</div>`)
+  if (LOJA.cidade) lojaLinhas.push(`<div>${escapar(LOJA.cidade)}</div>`)
+  if (LOJA.telefone) lojaLinhas.push(`<div>${escapar(LOJA.telefone)}</div>`)
+  if (LOJA.vendedor) lojaLinhas.push(`<div>Vendedor: ${escapar(LOJA.vendedor)}</div>`)
+
+  const clienteNome = venda.cliente_nome || 'Venda avulsa'
+  const clienteTelefone = venda.cliente_telefone || '-'
+  const clienteEndereco = venda.cliente_endereco || '-'
+  const clienteCpf = venda.cliente_cpf || '-'
+
+  const itensHtml = venda.itens
+    .map((item) => {
+      const nome = escapar(item.produto_nome ?? '—')
+      const qtd = item.quantidade.toLocaleString('pt-BR', {
+        minimumFractionDigits: 3,
+        maximumFractionDigits: 3
+      })
+      const unit = fmt(item.preco_unitario)
+      const subtotal = fmt(item.quantidade * item.preco_unitario)
+      return `
+        <tr>
+          <td class="col-nome">${nome}</td>
+          <td class="col-num">${qtd}</td>
+          <td class="col-num">${unit}</td>
+          <td class="col-num">-</td>
+          <td class="col-num">${subtotal}</td>
+        </tr>`
+    })
+    .join('')
+
+  // Bloco de pagamento — usa parcelas se houver, senão usa uma linha única
+  const formaPgto = FORMA_PAGAMENTO[venda.status_pagamento]
+  const linhasPagamento: string[] = []
+
+  if (venda.parcelas.length > 0) {
+    for (const p of venda.parcelas) {
+      linhasPagamento.push(`
+        <tr>
+          <td>${fmtDataCurta(p.data_vencimento)}</td>
+          <td class="col-num">${fmt(p.valor)}</td>
+          <td>${formaPgto} ${venda.num_parcelas ? `${p.numero}/${venda.num_parcelas}` : ''}</td>
+          <td>${p.status === 'pago' ? 'Pago' : p.status === 'inadimplente' ? 'Atrasada' : '-'}</td>
+        </tr>`)
+    }
+  } else {
+    const venc = venda.data_vencimento ? fmtDataCurta(venda.data_vencimento) : fmtDataCurta(venda.data)
+    const obs =
+      venda.status_pagamento === 'pago'
+        ? 'Pago'
+        : venda.status_pagamento === 'inadimplente'
+          ? 'Em atraso'
+          : '-'
+    linhasPagamento.push(`
+      <tr>
+        <td>${venc}</td>
+        <td class="col-num">${fmt(venda.total)}</td>
+        <td>${formaPgto}</td>
+        <td>${obs}</td>
+      </tr>`)
+  }
+
+  return `<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <title>Cupom — Pedido N° ${numeroPedido}</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    @page { margin: 4mm; }
+    html, body {
+      font-family: 'Courier New', Courier, monospace;
+      font-size: 11px;
+      color: #000;
+      background: #fff;
+    }
+    body {
+      width: 76mm;
+      max-width: 100%;
+      margin: 0 auto;
+      padding: 2mm 1mm;
+      line-height: 1.35;
+    }
+    .cabecalho { margin-bottom: 4px; }
+    .loja-nome { font-weight: bold; font-size: 13px; }
+    .linha-dupla { border-top: 2px double #000; margin: 4px 0; }
+    .linha-simples { border-top: 1px dashed #000; margin: 4px 0; }
+    .titulo-secao {
+      text-align: center;
+      font-weight: bold;
+      font-size: 12px;
+      margin: 2px 0;
+    }
+    .pedido-num {
+      text-align: center;
+      font-weight: bold;
+      font-size: 13px;
+      padding: 2px 0;
+    }
+    .linha-data {
+      display: flex;
+      justify-content: space-between;
+      gap: 8px;
+    }
+    .bloco-cliente { font-size: 11px; }
+    .bloco-cliente div { white-space: pre-wrap; word-break: break-word; }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 10.5px;
+    }
+    table th, table td {
+      padding: 1px 2px;
+      vertical-align: top;
+      text-align: left;
+    }
+    table th { font-weight: bold; }
+    .col-num { text-align: right; white-space: nowrap; }
+    .col-nome { word-break: break-word; }
+    .total-linha {
+      display: flex;
+      justify-content: space-between;
+      font-weight: bold;
+      font-size: 12px;
+      padding: 2px 0;
+    }
+    .aviso {
+      text-align: center;
+      font-size: 10.5px;
+      margin: 6px 0;
+      font-weight: bold;
+    }
+    .assinatura {
+      margin-top: 60px;
+      text-align: center;
+      font-size: 10.5px;
+    }
+    .assinatura .linha {
+      border-top: 1px solid #000;
+      margin: 0 4mm 2px;
+    }
+    .rodape-loja {
+      margin-top: 14px;
+      padding-top: 6px;
+      border-top: 1px dashed #000;
+      text-align: center;
+      font-size: 10px;
+      line-height: 1.4;
+    }
+    .rodape-loja .nome-loja {
+      font-weight: bold;
+      font-size: 11px;
+      margin-bottom: 1px;
+    }
+    @media print {
+      html, body { width: auto; }
+      body { padding: 0; }
+    }
+  </style>
+</head>
+<body>
+  <div class="cabecalho">
+    ${lojaLinhas.join('\n    ')}
+  </div>
+
+  <div class="linha-dupla"></div>
+  <div class="pedido-num">PEDIDO N° ${numeroPedido}</div>
+  <div class="linha-dupla"></div>
+
+  <div class="linha-data">
+    <span>Data: ${dataPedido}</span>
+  </div>
+
+  <div class="bloco-cliente">
+    <div>Cliente.: ${escapar(clienteNome)}</div>
+    <div>Endereço: ${escapar(clienteEndereco)}</div>
+    <div>CPF....: ${escapar(clienteCpf)}</div>
+    <div>Telefone: ${escapar(clienteTelefone)}</div>
+  </div>
+
+  <div class="linha-dupla"></div>
+  <div class="titulo-secao">PRODUTOS</div>
+  <div class="linha-dupla"></div>
+
+  <table>
+    <thead>
+      <tr>
+        <th class="col-nome">Nome</th>
+        <th class="col-num">Qtd.</th>
+        <th class="col-num">Vr. unt.</th>
+        <th class="col-num">Desc.</th>
+        <th class="col-num">Subtotal</th>
+      </tr>
+    </thead>
+    <tbody>
+      ${itensHtml}
+    </tbody>
+  </table>
+
+  <div class="linha-dupla"></div>
+  <div class="titulo-secao">PAGAMENTO</div>
+  <div class="linha-dupla"></div>
+
+  <div class="total-linha">
+    <span>Total do pedido:</span>
+    <span>${fmt(venda.total)}</span>
+  </div>
+
+  <div class="linha-simples"></div>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Vencimento</th>
+        <th class="col-num">Valor</th>
+        <th>Forma de pagamento</th>
+        <th>Obs.</th>
+      </tr>
+    </thead>
+    <tbody>
+      ${linhasPagamento.join('\n      ')}
+    </tbody>
+  </table>
+
+  <div class="linha-simples"></div>
+
+  <div class="aviso">*** Este cupom não é documento fiscal ***</div>
+
+  <div class="assinatura">
+    <div class="linha"></div>
+    Assinatura do cliente
+  </div>
+
+  <div class="rodape-loja">
+    <div class="nome-loja">${escapar(RODAPE_LOJA.nome)}</div>
+    <div>${escapar(RODAPE_LOJA.razao_social)}</div>
+    <div>CNPJ: ${escapar(RODAPE_LOJA.cnpj)}</div>
+    <div>${escapar(RODAPE_LOJA.endereco)}</div>
+    <div>${escapar(RODAPE_LOJA.cidade)}</div>
+  </div>
+</body>
+</html>`
+}

@@ -1,0 +1,90 @@
+import { app, BrowserWindow, shell } from 'electron'
+import { join } from 'path'
+import { is } from '@electron-toolkit/utils'
+import { inicializarBancoDeDados, obterBancoDeDados } from './db/conexao'
+import { executarMigrations } from './backup/migrations'
+import { inicializarBackupManager } from './backup/BackupManager'
+import { inicializarBackupAutomatico } from './backup/BackupAutomatico'
+import { registrarBackupAoFechar } from './backup/BackupAoFechar'
+import { registrarHandlersLicenca } from './ipc/licenca'
+import { registrarHandlersFornecedores } from './ipc/fornecedores'
+import { registrarHandlersClientes } from './ipc/clientes'
+import { registrarHandlersProdutos } from './ipc/produtos'
+import { registrarHandlersVendas } from './ipc/vendas'
+import { registrarHandlersEtiquetas } from './ipc/etiquetas'
+import { registrarHandlersBackup } from './ipc/backup'
+import { registrarHandlersImpressao } from './ipc/impressao'
+import { inicializarAtualizador } from './atualizador'
+
+let janelaAtual: BrowserWindow | null = null
+
+function criarJanelaPrincipal(): void {
+  janelaAtual = new BrowserWindow({
+    width: 1280,
+    height: 800,
+    minWidth: 1024,
+    minHeight: 600,
+    show: false,
+    autoHideMenuBar: true,
+    webPreferences: {
+      preload: join(__dirname, '../preload/index.js'),
+      sandbox: false,
+      contextIsolation: true,
+      nodeIntegration: false
+    }
+  })
+
+  janelaAtual.on('ready-to-show', () => {
+    janelaAtual?.maximize()
+    janelaAtual?.show()
+  })
+
+  registrarBackupAoFechar(janelaAtual)
+
+  // Abre links externos no navegador padrão, não dentro do app
+  janelaAtual.webContents.setWindowOpenHandler(({ url }) => {
+    shell.openExternal(url)
+    return { action: 'deny' }
+  })
+
+  if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
+    janelaAtual.loadURL(process.env['ELECTRON_RENDERER_URL'])
+  } else {
+    janelaAtual.loadFile(join(__dirname, '../renderer/index.html'))
+  }
+}
+
+app.whenReady().then(() => {
+  inicializarBancoDeDados()
+  executarMigrations(obterBancoDeDados())
+  inicializarBackupManager()
+  inicializarBackupAutomatico()
+
+  // Registra todos os handlers IPC antes de criar a janela
+  registrarHandlersLicenca()
+  registrarHandlersFornecedores()
+  registrarHandlersClientes()
+  registrarHandlersProdutos()
+  registrarHandlersVendas()
+  registrarHandlersEtiquetas()
+  registrarHandlersBackup()
+  registrarHandlersImpressao()
+
+  criarJanelaPrincipal()
+
+  // Inicializa o autoUpdater + IPC + backup pré-atualização.
+  // Precisa rodar depois de criarJanelaPrincipal pra ter a janela como alvo dos eventos.
+  inicializarAtualizador(() => janelaAtual)
+
+  app.on('activate', () => {
+    if (BrowserWindow.getAllWindows().length === 0) {
+      criarJanelaPrincipal()
+    }
+  })
+})
+
+app.on('window-all-closed', () => {
+  if (process.platform !== 'darwin') {
+    app.quit()
+  }
+})

@@ -1,0 +1,46 @@
+import type Database from 'better-sqlite3'
+import { aplicar001ModuloBackup } from './001_modulo_backup'
+import { aplicar002AtivarBackup } from './002_ativar_backup'
+import { aplicar003HashSenhaRestauracao } from './003_hash_senha_restauracao'
+import { aplicar004ClientesCpfNascimento } from './004_clientes_cpf_nascimento'
+import { aplicar005Parcelas } from './005_parcelas'
+import { aplicar006ParceladoStatus } from './006_parcelado_status'
+import { aplicar007ValorPago } from './007_valor_pago'
+
+type Migration = {
+  nome: string
+  aplicar: (db: Database.Database) => void
+}
+
+const MIGRATIONS: Migration[] = [
+  { nome: '001_modulo_backup', aplicar: aplicar001ModuloBackup },
+  { nome: '002_ativar_backup', aplicar: aplicar002AtivarBackup },
+  { nome: '003_hash_senha_restauracao', aplicar: aplicar003HashSenhaRestauracao },
+  { nome: '004_clientes_cpf_nascimento', aplicar: aplicar004ClientesCpfNascimento },
+  { nome: '005_parcelas', aplicar: aplicar005Parcelas },
+  { nome: '006_parcelado_status', aplicar: aplicar006ParceladoStatus },
+  { nome: '007_valor_pago', aplicar: aplicar007ValorPago },
+]
+
+export function executarMigrations(db: Database.Database): void {
+  // Garante que a tabela de controle existe antes de qualquer verificação
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS _migrations (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      nome TEXT UNIQUE NOT NULL,
+      data_aplicacao DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+  `)
+
+  for (const migration of MIGRATIONS) {
+    const jaAplicada = db
+      .prepare('SELECT 1 FROM _migrations WHERE nome = ?')
+      .get(migration.nome)
+
+    if (!jaAplicada) {
+      console.log(`[migrations] Aplicando: ${migration.nome}`)
+      migration.aplicar(db)
+      console.log(`[migrations] Concluído: ${migration.nome}`)
+    }
+  }
+}
