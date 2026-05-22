@@ -6,11 +6,26 @@ import {
   atualizarStatusVenda,
   pagarParcela,
   registrarPagamentoParcial,
+  restaurarVenda,
   resumoDashboard,
   type DadosNovaVenda,
-  type StatusPagamento
+  type StatusPagamento,
+  type SnapshotVenda
 } from '../db/queries/vendas'
 import { obterBackupManager } from '../backup/BackupManager'
+import { lerConfig } from '../backup/configBackup'
+
+// Dispara um backup ZIP em background após uma venda, se a opção estiver ativa.
+// Não bloqueia o handler IPC e nunca propaga erros — o usuário não pode esperar
+// por um backup pra confirmar uma venda.
+function dispararBackupPorVendaSeAtivo(): void {
+  if (lerConfig('backup_por_venda') !== '1') return
+  obterBackupManager()
+    .executarBackup('por-venda')
+    .catch((err) => {
+      console.warn('[backup] backup por-venda falhou:', (err as Error).message)
+    })
+}
 
 export function registrarHandlersVendas(): void {
   ipcMain.handle('vendas:listar', () => {
@@ -33,6 +48,7 @@ export function registrarHandlersVendas(): void {
     try {
       const resultado = criarVenda(dados)
       obterBackupManager().marcarAlteracao()
+      dispararBackupPorVendaSeAtivo()
       return { success: true, data: resultado }
     } catch (error) {
       return { success: false, error: (error as Error).message }
@@ -41,9 +57,9 @@ export function registrarHandlersVendas(): void {
 
   ipcMain.handle('vendas:atualizarStatus', (_event, id: number, status: StatusPagamento) => {
     try {
-      atualizarStatusVenda(id, status)
+      const snapshot = atualizarStatusVenda(id, status)
       obterBackupManager().marcarAlteracao()
-      return { success: true, data: null }
+      return { success: true, data: { snapshot } }
     } catch (error) {
       return { success: false, error: (error as Error).message }
     }
@@ -51,9 +67,9 @@ export function registrarHandlersVendas(): void {
 
   ipcMain.handle('vendas:pagarParcela', (_event, parcelaId: number) => {
     try {
-      pagarParcela(parcelaId)
+      const resultado = pagarParcela(parcelaId)
       obterBackupManager().marcarAlteracao()
-      return { success: true, data: null }
+      return { success: true, data: resultado ?? null }
     } catch (error) {
       return { success: false, error: (error as Error).message }
     }
@@ -61,7 +77,17 @@ export function registrarHandlersVendas(): void {
 
   ipcMain.handle('vendas:registrarPagamentoParcial', (_event, id: number, valor: number) => {
     try {
-      registrarPagamentoParcial(id, valor)
+      const snapshot = registrarPagamentoParcial(id, valor)
+      obterBackupManager().marcarAlteracao()
+      return { success: true, data: { snapshot } }
+    } catch (error) {
+      return { success: false, error: (error as Error).message }
+    }
+  })
+
+  ipcMain.handle('vendas:restaurar', (_event, id: number, snapshot: SnapshotVenda) => {
+    try {
+      restaurarVenda(id, snapshot)
       obterBackupManager().marcarAlteracao()
       return { success: true, data: null }
     } catch (error) {

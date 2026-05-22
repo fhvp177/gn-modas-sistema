@@ -1,6 +1,6 @@
 import { FC, useEffect, useMemo, useState } from 'react'
 import { IMaskInput } from 'react-imask'
-import { Pencil, Trash2, Plus, Search, Wallet } from 'lucide-react'
+import { Pencil, Trash2, Plus, Search, Wallet, User, Building2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -19,6 +19,8 @@ import DividasClienteDialog, {
 
 const ITENS_POR_PAGINA = 20
 
+type TipoPessoa = 'fisica' | 'juridica'
+
 type Cliente = {
   id: number
   nome: string
@@ -26,6 +28,9 @@ type Cliente = {
   endereco: string | null
   cpf: string | null
   data_nascimento: string | null
+  tipo_pessoa: TipoPessoa
+  cnpj: string | null
+  razao_social: string | null
   data_cadastro: string
 }
 
@@ -38,9 +43,15 @@ type FormCliente = {
   endereco: string
   cpf: string
   data_nascimento: string // DD/MM/YYYY no form, YYYY-MM-DD no banco
+  tipo_pessoa: TipoPessoa
+  cnpj: string
+  razao_social: string
 }
 
-const FORM_VAZIO: FormCliente = { nome: '', telefone: '', endereco: '', cpf: '', data_nascimento: '' }
+const FORM_VAZIO: FormCliente = {
+  nome: '', telefone: '', endereco: '', cpf: '', data_nascimento: '',
+  tipo_pessoa: 'fisica', cnpj: '', razao_social: ''
+}
 
 // YYYY-MM-DD → DD/MM/YYYY
 const paraBr = (iso: string | null): string => {
@@ -70,6 +81,24 @@ const validarCPF = (cpf: string): boolean => {
   resto = (soma * 10) % 11
   if (resto >= 10) resto = 0
   return resto === parseInt(n[10])
+}
+
+const validarCNPJ = (cnpj: string): boolean => {
+  const n = cnpj.replace(/\D/g, '')
+  if (n.length !== 14) return false
+  if (/^(\d)\1+$/.test(n)) return false
+  const pesos1 = [5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2]
+  const pesos2 = [6, 5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2]
+  let soma = 0
+  for (let i = 0; i < 12; i++) soma += parseInt(n[i]) * pesos1[i]
+  let resto = soma % 11
+  const dig1 = resto < 2 ? 0 : 11 - resto
+  if (dig1 !== parseInt(n[12])) return false
+  soma = 0
+  for (let i = 0; i < 13; i++) soma += parseInt(n[i]) * pesos2[i]
+  resto = soma % 11
+  const dig2 = resto < 2 ? 0 : 11 - resto
+  return dig2 === parseInt(n[13])
 }
 
 const validarDataBr = (ddmmyyyy: string): boolean => {
@@ -117,7 +146,9 @@ const Clientes: FC = () => {
       c.nome.toLowerCase().includes(t) ||
       c.telefone.includes(t) ||
       (c.endereco ?? '').toLowerCase().includes(t) ||
-      (c.cpf ?? '').includes(t)
+      (c.cpf ?? '').includes(t) ||
+      (c.cnpj ?? '').includes(t) ||
+      (c.razao_social ?? '').toLowerCase().includes(t)
     )
   })
 
@@ -144,6 +175,9 @@ const Clientes: FC = () => {
       endereco: c.endereco ?? '',
       cpf: c.cpf ?? '',
       data_nascimento: paraBr(c.data_nascimento),
+      tipo_pessoa: c.tipo_pessoa,
+      cnpj: c.cnpj ?? '',
+      razao_social: c.razao_social ?? '',
     })
     setErro('')
     setDialogAberto(true)
@@ -161,24 +195,40 @@ const Clientes: FC = () => {
       return
     }
 
-    if (form.cpf) {
-      if (form.cpf.replace(/\D/g, '').length !== 11) {
-        setErro('CPF incompleto. Preencha todos os 11 dígitos.')
-        return
+    if (form.tipo_pessoa === 'fisica') {
+      if (form.cpf) {
+        if (form.cpf.replace(/\D/g, '').length !== 11) {
+          setErro('CPF incompleto. Preencha todos os 11 dígitos.')
+          return
+        }
+        if (!validarCPF(form.cpf)) {
+          setErro('CPF inválido. Verifique os números digitados.')
+          return
+        }
       }
-      if (!validarCPF(form.cpf)) {
-        setErro('CPF inválido. Verifique os números digitados.')
-        return
-      }
-    }
 
-    if (form.data_nascimento) {
-      if (form.data_nascimento.length < 10) {
-        setErro('Data de nascimento incompleta. Use o formato DD/MM/AAAA.')
+      if (form.data_nascimento) {
+        if (form.data_nascimento.length < 10) {
+          setErro('Data de nascimento incompleta. Use o formato DD/MM/AAAA.')
+          return
+        }
+        if (!validarDataBr(form.data_nascimento)) {
+          setErro('Data de nascimento inválida. Verifique se o dia, mês e ano existem.')
+          return
+        }
+      }
+    } else {
+      // Pessoa Jurídica — CNPJ obrigatório
+      if (!form.cnpj.trim()) {
+        setErro('O CNPJ é obrigatório para clientes empresa.')
         return
       }
-      if (!validarDataBr(form.data_nascimento)) {
-        setErro('Data de nascimento inválida. Verifique se o dia, mês e ano existem.')
+      if (form.cnpj.replace(/\D/g, '').length !== 14) {
+        setErro('CNPJ incompleto. Preencha todos os 14 dígitos.')
+        return
+      }
+      if (!validarCNPJ(form.cnpj)) {
+        setErro('CNPJ inválido. Verifique os números digitados.')
         return
       }
     }
@@ -186,12 +236,16 @@ const Clientes: FC = () => {
     setCarregando(true)
     setErro('')
 
+    const ehPj = form.tipo_pessoa === 'juridica'
     const dados = {
       nome: form.nome.trim(),
       telefone: form.telefone,
       endereco: form.endereco.trim() || null,
-      cpf: form.cpf || null,
-      data_nascimento: paraIso(form.data_nascimento),
+      cpf: ehPj ? null : (form.cpf || null),
+      data_nascimento: ehPj ? null : paraIso(form.data_nascimento),
+      tipo_pessoa: form.tipo_pessoa,
+      cnpj: ehPj ? form.cnpj : null,
+      razao_social: ehPj ? (form.razao_social.trim() || null) : null,
     }
 
     const resp = editando
@@ -241,8 +295,9 @@ const Clientes: FC = () => {
         <table className="w-full text-sm">
           <thead className="bg-muted/50">
             <tr>
+              <th className="text-left px-4 py-3 font-medium text-muted-foreground w-10" />
               <th className="text-left px-4 py-3 font-medium text-muted-foreground">Nome</th>
-              <th className="text-left px-4 py-3 font-medium text-muted-foreground">CPF</th>
+              <th className="text-left px-4 py-3 font-medium text-muted-foreground">CPF / CNPJ</th>
               <th className="text-left px-4 py-3 font-medium text-muted-foreground">Telefone</th>
               <th className="text-left px-4 py-3 font-medium text-muted-foreground">Endereço</th>
               <th className="text-left px-4 py-3 font-medium text-muted-foreground">Cadastro</th>
@@ -252,15 +307,27 @@ const Clientes: FC = () => {
           <tbody>
             {listaFiltrada.length === 0 && (
               <tr>
-                <td colSpan={6} className="text-center py-12 text-muted-foreground">
+                <td colSpan={7} className="text-center py-12 text-muted-foreground">
                   {busca ? 'Nenhum cliente encontrado.' : 'Nenhum cliente cadastrado.'}
                 </td>
               </tr>
             )}
             {listaPaginada.map((c, i) => (
               <tr key={c.id} className={i % 2 === 0 ? 'bg-background' : 'bg-muted/20'}>
-                <td className="px-4 py-3 font-medium">{c.nome}</td>
-                <td className="px-4 py-3 text-muted-foreground">{c.cpf || '—'}</td>
+                <td className="px-4 py-3 text-muted-foreground">
+                  {c.tipo_pessoa === 'juridica'
+                    ? <Building2 className="w-4 h-4" aria-label="Empresa" />
+                    : <User className="w-4 h-4" aria-label="Pessoa física" />}
+                </td>
+                <td className="px-4 py-3 font-medium">
+                  {c.nome}
+                  {c.tipo_pessoa === 'juridica' && c.razao_social && (
+                    <div className="text-xs text-muted-foreground font-normal">{c.razao_social}</div>
+                  )}
+                </td>
+                <td className="px-4 py-3 text-muted-foreground">
+                  {c.tipo_pessoa === 'juridica' ? (c.cnpj || '—') : (c.cpf || '—')}
+                </td>
                 <td className="px-4 py-3 text-muted-foreground">{c.telefone}</td>
                 <td className="px-4 py-3 text-muted-foreground">{c.endereco || '—'}</td>
                 <td className="px-4 py-3 text-muted-foreground">{formatarData(c.data_cadastro)}</td>
@@ -310,17 +377,57 @@ const Clientes: FC = () => {
           </DialogHeader>
 
           <div className="grid gap-4 py-2">
+            {/* Toggle PF/PJ */}
+            <div className="grid grid-cols-2 gap-2 p-1 bg-muted rounded-lg">
+              <button
+                type="button"
+                onClick={() => { setForm((f) => ({ ...f, tipo_pessoa: 'fisica' })); setErro('') }}
+                className={`flex items-center justify-center gap-2 px-3 py-2 rounded-md text-sm font-medium transition-colors ${
+                  form.tipo_pessoa === 'fisica'
+                    ? 'bg-background shadow text-foreground'
+                    : 'text-muted-foreground hover:text-foreground'
+                }`}
+              >
+                <User className="w-4 h-4" />
+                Pessoa Física
+              </button>
+              <button
+                type="button"
+                onClick={() => { setForm((f) => ({ ...f, tipo_pessoa: 'juridica' })); setErro('') }}
+                className={`flex items-center justify-center gap-2 px-3 py-2 rounded-md text-sm font-medium transition-colors ${
+                  form.tipo_pessoa === 'juridica'
+                    ? 'bg-background shadow text-foreground'
+                    : 'text-muted-foreground hover:text-foreground'
+                }`}
+              >
+                <Building2 className="w-4 h-4" />
+                Pessoa Jurídica
+              </button>
+            </div>
+
             <div className="grid gap-1.5">
               <Label htmlFor="nome">
-                Nome <span className="text-destructive">*</span>
+                {form.tipo_pessoa === 'juridica' ? 'Nome Fantasia' : 'Nome'} <span className="text-destructive">*</span>
               </Label>
               <Input
                 id="nome"
                 value={form.nome}
                 onChange={(e) => setForm((f) => ({ ...f, nome: e.target.value }))}
-                placeholder="Nome completo do cliente"
+                placeholder={form.tipo_pessoa === 'juridica' ? 'Nome fantasia ou contato' : 'Nome completo do cliente'}
               />
             </div>
+
+            {form.tipo_pessoa === 'juridica' && (
+              <div className="grid gap-1.5">
+                <Label htmlFor="razao_social">Razão Social (opcional)</Label>
+                <Input
+                  id="razao_social"
+                  value={form.razao_social}
+                  onChange={(e) => setForm((f) => ({ ...f, razao_social: e.target.value }))}
+                  placeholder="Razão social da empresa"
+                />
+              </div>
+            )}
 
             <div className="grid gap-1.5">
               <Label htmlFor="telefone">
@@ -336,30 +443,44 @@ const Clientes: FC = () => {
               />
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
+            {form.tipo_pessoa === 'fisica' ? (
+              <div className="grid grid-cols-2 gap-4">
+                <div className="grid gap-1.5">
+                  <Label htmlFor="cpf">CPF (opcional)</Label>
+                  <IMaskInput
+                    id="cpf"
+                    mask="000.000.000-00"
+                    value={form.cpf}
+                    onAccept={(valor: string) => setForm((f) => ({ ...f, cpf: valor }))}
+                    placeholder="000.000.000-00"
+                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                  />
+                </div>
+                <div className="grid gap-1.5">
+                  <Label htmlFor="data_nascimento">Data de Nascimento (opcional)</Label>
+                  <IMaskInput
+                    id="data_nascimento"
+                    mask="00/00/0000"
+                    value={form.data_nascimento}
+                    onAccept={(valor: string) => setForm((f) => ({ ...f, data_nascimento: valor }))}
+                    placeholder="DD/MM/AAAA"
+                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                  />
+                </div>
+              </div>
+            ) : (
               <div className="grid gap-1.5">
-                <Label htmlFor="cpf">CPF (opcional)</Label>
+                <Label htmlFor="cnpj">CNPJ <span className="text-destructive">*</span></Label>
                 <IMaskInput
-                  id="cpf"
-                  mask="000.000.000-00"
-                  value={form.cpf}
-                  onAccept={(valor: string) => setForm((f) => ({ ...f, cpf: valor }))}
-                  placeholder="000.000.000-00"
+                  id="cnpj"
+                  mask="00.000.000/0000-00"
+                  value={form.cnpj}
+                  onAccept={(valor: string) => setForm((f) => ({ ...f, cnpj: valor }))}
+                  placeholder="00.000.000/0000-00"
                   className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
                 />
               </div>
-              <div className="grid gap-1.5">
-                <Label htmlFor="data_nascimento">Data de Nascimento (opcional)</Label>
-                <IMaskInput
-                  id="data_nascimento"
-                  mask="00/00/0000"
-                  value={form.data_nascimento}
-                  onAccept={(valor: string) => setForm((f) => ({ ...f, data_nascimento: valor }))}
-                  placeholder="DD/MM/AAAA"
-                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-                />
-              </div>
-            </div>
+            )}
 
             <div className="grid gap-1.5">
               <Label htmlFor="endereco">Endereço (opcional)</Label>

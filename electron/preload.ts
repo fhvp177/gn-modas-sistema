@@ -41,6 +41,15 @@ const api = {
     deletar: (id: number): Promise<RespostaIPC> => ipcRenderer.invoke('fornecedores:deletar', id)
   },
 
+  // Categorias
+  categorias: {
+    listar: (): Promise<RespostaIPC> => ipcRenderer.invoke('categorias:listar'),
+    criar: (nome: string): Promise<RespostaIPC> => ipcRenderer.invoke('categorias:criar', nome),
+    atualizar: (id: number, nome: string): Promise<RespostaIPC> =>
+      ipcRenderer.invoke('categorias:atualizar', id, nome),
+    deletar: (id: number): Promise<RespostaIPC> => ipcRenderer.invoke('categorias:deletar', id)
+  },
+
   // Vendas
   vendas: {
     listar: (): Promise<RespostaIPC> => ipcRenderer.invoke('vendas:listar'),
@@ -52,6 +61,8 @@ const api = {
       ipcRenderer.invoke('vendas:pagarParcela', parcelaId),
     registrarPagamentoParcial: (id: number, valor: number): Promise<RespostaIPC> =>
       ipcRenderer.invoke('vendas:registrarPagamentoParcial', id, valor),
+    restaurar: (id: number, snapshot: unknown): Promise<RespostaIPC> =>
+      ipcRenderer.invoke('vendas:restaurar', id, snapshot),
     resumoDashboard: (): Promise<RespostaIPC> => ipcRenderer.invoke('vendas:resumoDashboard')
   },
 
@@ -64,6 +75,12 @@ const api = {
   // Impressão
   impressao: {
     imprimir: (html: string): Promise<RespostaIPC> => ipcRenderer.invoke('impressao:imprimir', html)
+  },
+
+  // Dashboard (métricas agregadas)
+  dashboard: {
+    metricas: (periodoDias: number): Promise<RespostaIPC> =>
+      ipcRenderer.invoke('dashboard:metricas', periodoDias)
   },
 
   // Atualização (electron-updater)

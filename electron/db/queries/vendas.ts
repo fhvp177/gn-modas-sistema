@@ -25,6 +25,9 @@ export type Venda = {
   cliente_telefone?: string | null
   cliente_endereco?: string | null
   cliente_cpf?: string | null
+  cliente_tipo_pessoa?: 'fisica' | 'juridica' | null
+  cliente_cnpj?: string | null
+  cliente_razao_social?: string | null
 }
 
 export type ItemVenda = {
@@ -38,6 +41,25 @@ export type ItemVenda = {
 }
 
 export type VendaDetalhada = Venda & { itens: ItemVenda[]; parcelas: Parcela[] }
+
+// Estado mínimo da venda para permitir "desfazer" uma ação de pagamento.
+export type SnapshotVenda = {
+  status: StatusPagamento
+  valor_pago: number
+  parcelas: Array<{ id: number; status: 'pendente' | 'pago' | 'inadimplente' }>
+}
+
+function obterSnapshotVenda(id: number): SnapshotVenda | undefined {
+  const db = obterBancoDeDados()
+  const venda = db
+    .prepare('SELECT status_pagamento, valor_pago FROM vendas WHERE id = ?')
+    .get(id) as { status_pagamento: StatusPagamento; valor_pago: number } | undefined
+  if (!venda) return undefined
+  const parcelas = db
+    .prepare('SELECT id, status FROM parcelas WHERE venda_id = ?')
+    .all(id) as Array<{ id: number; status: 'pendente' | 'pago' | 'inadimplente' }>
+  return { status: venda.status_pagamento, valor_pago: venda.valor_pago, parcelas }
+}
 
 export type DadosNovaVenda = {
   cliente_id: number | null
@@ -119,6 +141,9 @@ export function buscarVendaPorId(id: number): VendaDetalhada | undefined {
               c.telefone AS cliente_telefone,
               c.endereco AS cliente_endereco,
               c.cpf AS cliente_cpf,
+              c.tipo_pessoa AS cliente_tipo_pessoa,
+              c.cnpj AS cliente_cnpj,
+              c.razao_social AS cliente_razao_social,
               COALESCE(p_late.valor_inadimplente, 0) AS valor_inadimplente
        FROM vendas v
        LEFT JOIN clientes c ON c.id = v.cliente_id
@@ -222,8 +247,9 @@ export function criarVenda(dados: DadosNovaVenda): VendaDetalhada {
   return buscarVendaPorId(vendaId)!
 }
 
-export function atualizarStatusVenda(id: number, status: StatusPagamento): void {
+export function atualizarStatusVenda(id: number, status: StatusPagamento): SnapshotVenda | undefined {
   const db = obterBancoDeDados()
+  const snapshot = obterSnapshotVenda(id)
   db.transaction(() => {
     if (status === 'pago') {
       const venda = db.prepare('SELECT total FROM vendas WHERE id = ?').get(id) as { total: number } | undefined
@@ -234,10 +260,12 @@ export function atualizarStatusVenda(id: number, status: StatusPagamento): void 
       db.prepare('UPDATE vendas SET status_pagamento = ? WHERE id = ?').run(status, id)
     }
   })()
+  return snapshot
 }
 
-export function registrarPagamentoParcial(id: number, valor: number): void {
+export function registrarPagamentoParcial(id: number, valor: number): SnapshotVenda | undefined {
   const db = obterBancoDeDados()
+  const snapshot = obterSnapshotVenda(id)
   db.transaction(() => {
     const venda = db
       .prepare('SELECT total, valor_pago FROM vendas WHERE id = ?')
@@ -260,17 +288,20 @@ export function registrarPagamentoParcial(id: number, valor: number): void {
         .run(novoValorPago, id)
     }
   })()
+  return snapshot
 }
 
-export function pagarParcela(parcelaId: number): void {
+export function pagarParcela(parcelaId: number): { vendaId: number; snapshot: SnapshotVenda } | undefined {
   const db = obterBancoDeDados()
+  const parcela = db
+    .prepare('SELECT venda_id FROM parcelas WHERE id = ?')
+    .get(parcelaId) as { venda_id: number } | undefined
+  if (!parcela) return undefined
+  const snapshot = obterSnapshotVenda(parcela.venda_id)
+  if (!snapshot) return undefined
+
   db.transaction(() => {
     db.prepare("UPDATE parcelas SET status = 'pago' WHERE id = ?").run(parcelaId)
-
-    const parcela = db
-      .prepare('SELECT venda_id FROM parcelas WHERE id = ?')
-      .get(parcelaId) as { venda_id: number } | undefined
-    if (!parcela) return
 
     const { total, pagas } = db
       .prepare(
@@ -288,6 +319,21 @@ export function pagarParcela(parcelaId: number): void {
         .get(parcela.venda_id)
       const novoStatus = temAtrasada ? 'inadimplente' : 'parcelado'
       db.prepare('UPDATE vendas SET status_pagamento = ? WHERE id = ?').run(novoStatus, parcela.venda_id)
+    }
+  })()
+  return { vendaId: parcela.venda_id, snapshot }
+}
+
+// Restaura uma venda ao estado capturado antes de uma ação de pagamento.
+// Usado para "desfazer" cliques acidentais em botões de pagamento.
+export function restaurarVenda(id: number, snapshot: SnapshotVenda): void {
+  const db = obterBancoDeDados()
+  db.transaction(() => {
+    db.prepare('UPDATE vendas SET status_pagamento = ?, valor_pago = ? WHERE id = ?')
+      .run(snapshot.status, snapshot.valor_pago, id)
+    const atualizarParcela = db.prepare('UPDATE parcelas SET status = ? WHERE id = ?')
+    for (const p of snapshot.parcelas) {
+      atualizarParcela.run(p.status, p.id)
     }
   })()
 }

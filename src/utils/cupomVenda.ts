@@ -30,6 +30,9 @@ export type DadosCupomVenda = {
   cliente_telefone?: string | null
   cliente_endereco?: string | null
   cliente_cpf?: string | null
+  cliente_tipo_pessoa?: 'fisica' | 'juridica' | null
+  cliente_cnpj?: string | null
+  cliente_razao_social?: string | null
   itens: ItemCupom[]
   parcelas: ParcelaCupom[]
 }
@@ -93,10 +96,13 @@ export function gerarHtmlCupomVenda(venda: DadosCupomVenda): string {
   if (LOJA.telefone) lojaLinhas.push(`<div>${escapar(LOJA.telefone)}</div>`)
   if (LOJA.vendedor) lojaLinhas.push(`<div>Vendedor: ${escapar(LOJA.vendedor)}</div>`)
 
+  const ehPj = venda.cliente_tipo_pessoa === 'juridica'
   const clienteNome = venda.cliente_nome || 'Venda avulsa'
   const clienteTelefone = venda.cliente_telefone || '-'
   const clienteEndereco = venda.cliente_endereco || '-'
-  const clienteCpf = venda.cliente_cpf || '-'
+  const clienteDocLabel = ehPj ? 'CNPJ...' : 'CPF....'
+  const clienteDocValor = ehPj ? (venda.cliente_cnpj || '-') : (venda.cliente_cpf || '-')
+  const clienteRazaoSocial = ehPj ? venda.cliente_razao_social : null
 
   const itensHtml = venda.itens
     .map((item) => {
@@ -261,9 +267,10 @@ export function gerarHtmlCupomVenda(venda: DadosCupomVenda): string {
   </div>
 
   <div class="bloco-cliente">
-    <div>Cliente.: ${escapar(clienteNome)}</div>
+    <div>Cliente.: ${escapar(clienteNome)}</div>${clienteRazaoSocial ? `
+    <div>Razão...: ${escapar(clienteRazaoSocial)}</div>` : ''}
     <div>Endereço: ${escapar(clienteEndereco)}</div>
-    <div>CPF....: ${escapar(clienteCpf)}</div>
+    <div>${clienteDocLabel}: ${escapar(clienteDocValor)}</div>
     <div>Telefone: ${escapar(clienteTelefone)}</div>
   </div>
 

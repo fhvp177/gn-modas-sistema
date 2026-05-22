@@ -1,6 +1,6 @@
 import { app } from 'electron'
 import { join } from 'path'
-import { existsSync, mkdirSync, rmSync, statSync } from 'fs'
+import { existsSync, mkdirSync, readdirSync, rmSync, statSync } from 'fs'
 import { randomUUID } from 'crypto'
 import { obterBancoDeDados } from '../db/conexao'
 import { validarLicenca } from '../licenca'
@@ -9,7 +9,15 @@ import { lerConfig, gravarConfig } from './configBackup'
 import { aplicarPoliticaCompleta } from './PoliticaRetencao'
 import { espelharBackup } from './EspelhoSecundario'
 
-export type TipoBackup = 'automatico' | 'diario' | 'manual' | 'pre-update' | 'pre-restauracao'
+export type TipoBackup =
+  | 'automatico'
+  | 'diario'
+  | 'manual'
+  | 'pre-update'
+  | 'pre-restauracao'
+  | 'por-venda'
+
+const RETENCAO_POR_VENDA = 30
 
 export type ResultadoBackup = {
   sucesso: boolean
@@ -24,6 +32,7 @@ const PASTA_POR_TIPO: Record<TipoBackup, string> = {
   manual: 'manuais',
   'pre-update': 'pre-update',
   'pre-restauracao': 'pre-restauracao',
+  'por-venda': 'por-venda',
 }
 
 const TODAS_AS_SUBPASTAS = [
@@ -34,6 +43,7 @@ const TODAS_AS_SUBPASTAS = [
   'manuais',
   'pre-update',
   'pre-restauracao',
+  'por-venda',
 ]
 
 function formatarNomeArquivo(data: Date, tipo: TipoBackup): string {
@@ -81,6 +91,7 @@ class BackupManager {
       ins.run('backup_ultima_promocao_mensal', '')
       ins.run('backup_alerta_tamanho', '0')
       ins.run('backup_hash_senha_restauracao', '')
+      ins.run('backup_por_venda', '0')
     })()
 
     // Seed das datas de promoção: se vazias (primeiro boot do módulo), inicializar
@@ -130,7 +141,11 @@ class BackupManager {
       if (resultado.sucesso) {
         gravarConfig('backup_timestamp_ultimo_backup', agora.toISOString())
         gravarConfig('backup_falhas_consecutivas', '0')
-        this.aplicarRetencao()
+        if (tipo === 'por-venda') {
+          this.aplicarRetencaoPorVenda()
+        } else {
+          this.aplicarRetencao()
+        }
         this.espelharParaSecundario(caminhoZip, PASTA_POR_TIPO[tipo])
         return { sucesso: true, caminhoZip, tamanhoBytes: resultado.tamanhoBytes }
       }
@@ -170,6 +185,29 @@ class BackupManager {
         `${resultado.arquivosPromovidos} promovidos, ` +
         `${resultado.tamanhoTotalMB} MB total`
       )
+    }
+  }
+
+  // Mantém apenas os RETENCAO_POR_VENDA arquivos mais recentes na pasta 'por-venda',
+  // já que essa pasta cresce muito rápido (1 ZIP por venda) e fica fora da política
+  // de promoção semanal/mensal usada pelos outros tipos.
+  private aplicarRetencaoPorVenda(): void {
+    const pasta = join(this.pastaPadrao, PASTA_POR_TIPO['por-venda'])
+    if (!existsSync(pasta)) return
+    try {
+      const arquivos = readdirSync(pasta)
+        .filter((nome) => nome.endsWith('.zip'))
+        .map((nome) => {
+          const caminho = join(pasta, nome)
+          return { caminho, mtime: statSync(caminho).mtimeMs }
+        })
+        .sort((a, b) => b.mtime - a.mtime) // mais recentes primeiro
+
+      for (const arquivo of arquivos.slice(RETENCAO_POR_VENDA)) {
+        rmSync(arquivo.caminho, { force: true })
+      }
+    } catch (err) {
+      console.warn('[backup] Falha ao aplicar retenção por-venda:', (err as Error).message)
     }
   }
 

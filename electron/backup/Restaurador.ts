@@ -14,6 +14,7 @@ const SUBPASTAS_ORDEM = [
   'semanais',
   'mensais',
   'automaticos',
+  'por-venda',
   'pre-restauracao',
   'pre-update',
 ]

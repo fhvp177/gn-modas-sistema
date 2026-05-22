@@ -1,8 +1,15 @@
 import type Database from 'better-sqlite3'
 
+const CATEGORIAS_PADRAO = ['Roupas', 'Brinquedos', 'Perfumes', 'Acessórios', 'Diversos']
+
 // Cria todas as tabelas se ainda não existirem
 export function criarTabelas(db: Database.Database): void {
   db.exec(`
+    CREATE TABLE IF NOT EXISTS categorias (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      nome TEXT NOT NULL UNIQUE COLLATE NOCASE
+    );
+
     CREATE TABLE IF NOT EXISTS fornecedores (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       nome TEXT NOT NULL,
@@ -29,6 +36,9 @@ export function criarTabelas(db: Database.Database): void {
       nome TEXT NOT NULL,
       telefone TEXT NOT NULL,
       endereco TEXT,
+      tipo_pessoa TEXT NOT NULL DEFAULT 'fisica',
+      cnpj TEXT,
+      razao_social TEXT,
       data_cadastro DATETIME DEFAULT CURRENT_TIMESTAMP
     );
 
@@ -82,4 +92,24 @@ export function criarTabelas(db: Database.Database): void {
       data_envio DATETIME
     );
   `)
+
+  semearCategorias(db)
+}
+
+// Garante que toda categoria em uso pelos produtos esteja cadastrada.
+// Em bancos novos, adiciona também as categorias padrão.
+function semearCategorias(db: Database.Database): void {
+  const inserir = db.prepare('INSERT OR IGNORE INTO categorias (nome) VALUES (?)')
+  const transacao = db.transaction(() => {
+    const emUso = db
+      .prepare("SELECT DISTINCT categoria AS nome FROM produtos WHERE categoria IS NOT NULL AND categoria != ''")
+      .all() as Array<{ nome: string }>
+    for (const { nome } of emUso) inserir.run(nome)
+
+    const total = db.prepare('SELECT COUNT(*) AS n FROM categorias').get() as { n: number }
+    if (total.n === 0) {
+      for (const nome of CATEGORIAS_PADRAO) inserir.run(nome)
+    }
+  })
+  transacao()
 }

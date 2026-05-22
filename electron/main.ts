@@ -8,12 +8,14 @@ import { inicializarBackupAutomatico } from './backup/BackupAutomatico'
 import { registrarBackupAoFechar } from './backup/BackupAoFechar'
 import { registrarHandlersLicenca } from './ipc/licenca'
 import { registrarHandlersFornecedores } from './ipc/fornecedores'
+import { registrarHandlersCategorias } from './ipc/categorias'
 import { registrarHandlersClientes } from './ipc/clientes'
 import { registrarHandlersProdutos } from './ipc/produtos'
 import { registrarHandlersVendas } from './ipc/vendas'
 import { registrarHandlersEtiquetas } from './ipc/etiquetas'
 import { registrarHandlersBackup } from './ipc/backup'
 import { registrarHandlersImpressao } from './ipc/impressao'
+import { registrarHandlersDashboard } from './ipc/dashboard'
 import { inicializarAtualizador } from './atualizador'
 
 let janelaAtual: BrowserWindow | null = null
@@ -63,12 +65,14 @@ app.whenReady().then(() => {
   // Registra todos os handlers IPC antes de criar a janela
   registrarHandlersLicenca()
   registrarHandlersFornecedores()
+  registrarHandlersCategorias()
   registrarHandlersClientes()
   registrarHandlersProdutos()
   registrarHandlersVendas()
   registrarHandlersEtiquetas()
   registrarHandlersBackup()
   registrarHandlersImpressao()
+  registrarHandlersDashboard()
 
   criarJanelaPrincipal()
 

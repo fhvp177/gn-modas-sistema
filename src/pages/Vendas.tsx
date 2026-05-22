@@ -1,5 +1,5 @@
 import { FC, useEffect, useRef, useState } from 'react'
-import { ArrowLeft, Plus, Eye, CheckCircle, Search, Trash2, ShoppingCart, UserPlus, Printer } from 'lucide-react'
+import { ArrowLeft, Plus, Eye, CheckCircle, Search, Trash2, ShoppingCart, UserPlus, Printer, User, Building2 } from 'lucide-react'
 import { IMaskInput } from 'react-imask'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -12,6 +12,8 @@ import {
   DialogFooter
 } from '@/components/ui/dialog'
 import Paginacao from '@/components/ui/paginacao'
+import { useToast } from '@/components/ui/toast'
+import ClienteSeletor from '@/components/ClienteSeletor'
 import { gerarHtmlCupomVenda } from '@/utils/cupomVenda'
 
 const ITENS_POR_PAGINA = 20
@@ -72,7 +74,33 @@ type Produto = {
   estoque: number
 }
 
-type Cliente = { id: number; nome: string; telefone: string }
+type Cliente = {
+  id: number
+  nome: string
+  telefone: string
+  tipo_pessoa?: 'fisica' | 'juridica'
+  cpf?: string | null
+  cnpj?: string | null
+  razao_social?: string | null
+}
+
+const validarCNPJ = (cnpj: string): boolean => {
+  const n = cnpj.replace(/\D/g, '')
+  if (n.length !== 14) return false
+  if (/^(\d)\1+$/.test(n)) return false
+  const pesos1 = [5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2]
+  const pesos2 = [6, 5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2]
+  let soma = 0
+  for (let i = 0; i < 12; i++) soma += parseInt(n[i]) * pesos1[i]
+  let resto = soma % 11
+  const dig1 = resto < 2 ? 0 : 11 - resto
+  if (dig1 !== parseInt(n[12])) return false
+  soma = 0
+  for (let i = 0; i < 13; i++) soma += parseInt(n[i]) * pesos2[i]
+  resto = soma % 11
+  const dig2 = resto < 2 ? 0 : 11 - resto
+  return dig2 === parseInt(n[13])
+}
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -85,6 +113,15 @@ const CORES_STATUS: Record<StatusPagamento, string> = {
 
 const LABEL_STATUS: Record<StatusPagamento, string> = {
   pago: 'Pago',
+  pendente: 'Venda a prazo',
+  inadimplente: 'Inadimplente',
+  parcelado: 'Parcelado'
+}
+
+// Rótulos da forma de pagamento no PDV — usados durante a venda (presente),
+// diferente de LABEL_STATUS que descreve o estado da venda no histórico (passado).
+const LABEL_FORMA_PAGAMENTO: Record<StatusPagamento, string> = {
+  pago: 'À vista',
   pendente: 'Venda a prazo',
   inadimplente: 'Inadimplente',
   parcelado: 'Parcelado'
@@ -135,10 +172,25 @@ const HistoricoVendas: FC<{ onNova: () => void }> = ({ onNova }) => {
   const [salvandoPagamento, setSalvandoPagamento] = useState(false)
   const [erroPagamento, setErroPagamento] = useState('')
   const [paginaAtual, setPaginaAtual] = useState(1)
+  const { showToast } = useToast()
 
   const carregar = async () => {
     const resp = await window.api.vendas.listar()
     if (resp.success) setLista(resp.data as Venda[])
+  }
+
+  const desfazerPagamento = async (vendaId: number, snapshot: SnapshotVenda) => {
+    const resp = await window.api.vendas.restaurar(vendaId, snapshot)
+    if (!resp.success) {
+      showToast({ message: `Não foi possível desfazer: ${resp.error}`, variant: 'destructive' })
+      return
+    }
+    await carregar()
+    if (vendaDetalhada && vendaDetalhada.id === vendaId) {
+      const r = await window.api.vendas.buscarPorId(vendaId)
+      if (r.success && r.data) setVendaDetalhada(r.data as VendaDetalhada)
+    }
+    showToast({ message: 'Pagamento revertido.', variant: 'success' })
   }
 
   useEffect(() => { carregar() }, [])
@@ -177,6 +229,13 @@ const HistoricoVendas: FC<{ onNova: () => void }> = ({ onNova }) => {
     if (resp.success) {
       await verDetalhes(id)
       await carregar()
+      const snapshot = resp.data?.snapshot
+      if (snapshot) {
+        showToast({
+          message: `Pagamento de ${fmt(valor)} registrado.`,
+          action: { label: 'Desfazer', onClick: () => desfazerPagamento(id, snapshot) }
+        })
+      }
     } else {
       setErroPagamento(resp.error)
     }
@@ -184,8 +243,17 @@ const HistoricoVendas: FC<{ onNova: () => void }> = ({ onNova }) => {
   }
 
   const marcarComoPago = async (id: number) => {
-    await window.api.vendas.atualizarStatus(id, 'pago')
+    const resp = await window.api.vendas.atualizarStatus(id, 'pago')
     await carregar()
+    if (resp.success) {
+      const snapshot = resp.data?.snapshot
+      if (snapshot) {
+        showToast({
+          message: 'Venda marcada como paga.',
+          action: { label: 'Desfazer', onClick: () => desfazerPagamento(id, snapshot) }
+        })
+      }
+    }
   }
 
   const imprimirCupom = async (id: number) => {
@@ -200,12 +268,19 @@ const HistoricoVendas: FC<{ onNova: () => void }> = ({ onNova }) => {
   }
 
   const pagarParcela = async (parcelaId: number) => {
-    await window.api.vendas.pagarParcela(parcelaId)
+    const resp = await window.api.vendas.pagarParcela(parcelaId)
     if (vendaDetalhada) {
-      const resp = await window.api.vendas.buscarPorId(vendaDetalhada.id)
-      if (resp.success && resp.data) setVendaDetalhada(resp.data as VendaDetalhada)
+      const r = await window.api.vendas.buscarPorId(vendaDetalhada.id)
+      if (r.success && r.data) setVendaDetalhada(r.data as VendaDetalhada)
     }
     await carregar()
+    if (resp.success && resp.data) {
+      const { vendaId, snapshot } = resp.data
+      showToast({
+        message: 'Parcela marcada como paga.',
+        action: { label: 'Desfazer', onClick: () => desfazerPagamento(vendaId, snapshot) }
+      })
+    }
   }
 
   const tabs: Array<{ key: StatusPagamento | 'todos'; label: string }> = [
@@ -534,8 +609,11 @@ const PDV: FC<{ onSair: () => void }> = ({ onSair }) => {
 
   // Cadastro rápido de cliente
   const [modalClienteAberto, setModalClienteAberto] = useState(false)
+  const [tipoPessoaRapido, setTipoPessoaRapido] = useState<'fisica' | 'juridica'>('fisica')
   const [nomeClienteRapido, setNomeClienteRapido] = useState('')
   const [telefoneClienteRapido, setTelefoneClienteRapido] = useState('')
+  const [cnpjClienteRapido, setCnpjClienteRapido] = useState('')
+  const [razaoSocialRapido, setRazaoSocialRapido] = useState('')
   const [erroCliente, setErroCliente] = useState('')
   const [salvandoCliente, setSalvandoCliente] = useState(false)
 
@@ -672,8 +750,11 @@ const PDV: FC<{ onSair: () => void }> = ({ onSair }) => {
   }
 
   const abrirClienteRapido = () => {
+    setTipoPessoaRapido('fisica')
     setNomeClienteRapido('')
     setTelefoneClienteRapido('')
+    setCnpjClienteRapido('')
+    setRazaoSocialRapido('')
     setErroCliente('')
     setModalClienteAberto(true)
   }
@@ -684,14 +765,32 @@ const PDV: FC<{ onSair: () => void }> = ({ onSair }) => {
       setErroCliente('Telefone incompleto. Preencha no formato (00) 9.0000-0000.')
       return
     }
+    if (tipoPessoaRapido === 'juridica') {
+      if (!cnpjClienteRapido.trim()) {
+        setErroCliente('O CNPJ é obrigatório para clientes empresa.')
+        return
+      }
+      if (cnpjClienteRapido.replace(/\D/g, '').length !== 14) {
+        setErroCliente('CNPJ incompleto. Preencha todos os 14 dígitos.')
+        return
+      }
+      if (!validarCNPJ(cnpjClienteRapido)) {
+        setErroCliente('CNPJ inválido. Verifique os números digitados.')
+        return
+      }
+    }
     setSalvandoCliente(true)
     setErroCliente('')
+    const ehPj = tipoPessoaRapido === 'juridica'
     const resp = await window.api.clientes.criar({
       nome: nomeClienteRapido.trim(),
       telefone: telefoneClienteRapido,
       endereco: null,
       cpf: null,
       data_nascimento: null,
+      tipo_pessoa: tipoPessoaRapido,
+      cnpj: ehPj ? cnpjClienteRapido : null,
+      razao_social: ehPj ? (razaoSocialRapido.trim() || null) : null,
     })
     if (resp.success) {
       const novoCliente = resp.data as Cliente
@@ -828,16 +927,11 @@ const PDV: FC<{ onSair: () => void }> = ({ onSair }) => {
             }
           </Label>
           <div className="flex gap-2">
-            <select
-              value={clienteId}
-              onChange={(e) => setClienteId(e.target.value)}
-              className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            >
-              <option value="">— Venda avulsa —</option>
-              {clientes.map((c) => (
-                <option key={c.id} value={c.id}>{c.nome}</option>
-              ))}
-            </select>
+            <ClienteSeletor
+              clientes={clientes}
+              clienteIdSelecionado={clienteId}
+              onChange={setClienteId}
+            />
             <Button
               type="button"
               variant="outline"
@@ -861,7 +955,7 @@ const PDV: FC<{ onSair: () => void }> = ({ onSair }) => {
             <span>Unidades</span>
             <span>{totalItens}</span>
           </div>
-          <div className="flex justify-between font-bold text-xl pt-2 border-t">
+          <div className="flex justify-between font-bold text-[1.75rem] pt-2 border-t">
             <span>TOTAL</span>
             <span>{fmt(total)}</span>
           </div>
@@ -899,7 +993,7 @@ const PDV: FC<{ onSair: () => void }> = ({ onSair }) => {
                     statusPagamento === s ? 'bg-current border-current' : 'border-muted-foreground'
                   }`}
                 />
-                {LABEL_STATUS[s]}
+                {LABEL_FORMA_PAGAMENTO[s]}
               </label>
             ))}
           </div>
@@ -970,18 +1064,74 @@ const PDV: FC<{ onSair: () => void }> = ({ onSair }) => {
             Dados adicionais podem ser completados depois em <strong>Clientes</strong>.
           </p>
           <div className="grid gap-3 py-1">
+            {/* Toggle PF/PJ */}
+            <div className="grid grid-cols-2 gap-2 p-1 bg-muted rounded-lg">
+              <button
+                type="button"
+                onClick={() => { setTipoPessoaRapido('fisica'); setErroCliente('') }}
+                className={`flex items-center justify-center gap-2 px-3 py-2 rounded-md text-sm font-medium transition-colors ${
+                  tipoPessoaRapido === 'fisica'
+                    ? 'bg-background shadow text-foreground'
+                    : 'text-muted-foreground hover:text-foreground'
+                }`}
+              >
+                <User className="w-4 h-4" />
+                Física
+              </button>
+              <button
+                type="button"
+                onClick={() => { setTipoPessoaRapido('juridica'); setErroCliente('') }}
+                className={`flex items-center justify-center gap-2 px-3 py-2 rounded-md text-sm font-medium transition-colors ${
+                  tipoPessoaRapido === 'juridica'
+                    ? 'bg-background shadow text-foreground'
+                    : 'text-muted-foreground hover:text-foreground'
+                }`}
+              >
+                <Building2 className="w-4 h-4" />
+                Jurídica
+              </button>
+            </div>
+
             <div className="grid gap-1.5">
               <Label htmlFor="nome-cliente-rapido">
-                Nome <span className="text-destructive">*</span>
+                {tipoPessoaRapido === 'juridica' ? 'Nome Fantasia' : 'Nome'} <span className="text-destructive">*</span>
               </Label>
               <Input
                 id="nome-cliente-rapido"
                 value={nomeClienteRapido}
                 onChange={(e) => setNomeClienteRapido(e.target.value)}
-                placeholder="Nome completo do cliente"
+                placeholder={tipoPessoaRapido === 'juridica' ? 'Nome fantasia ou contato' : 'Nome completo do cliente'}
                 autoFocus
               />
             </div>
+
+            {tipoPessoaRapido === 'juridica' && (
+              <>
+                <div className="grid gap-1.5">
+                  <Label htmlFor="razao-social-rapido">Razão Social (opcional)</Label>
+                  <Input
+                    id="razao-social-rapido"
+                    value={razaoSocialRapido}
+                    onChange={(e) => setRazaoSocialRapido(e.target.value)}
+                    placeholder="Razão social da empresa"
+                  />
+                </div>
+                <div className="grid gap-1.5">
+                  <Label htmlFor="cnpj-cliente-rapido">
+                    CNPJ <span className="text-destructive">*</span>
+                  </Label>
+                  <IMaskInput
+                    id="cnpj-cliente-rapido"
+                    mask="00.000.000/0000-00"
+                    value={cnpjClienteRapido}
+                    onAccept={(valor: string) => setCnpjClienteRapido(valor)}
+                    placeholder="00.000.000/0000-00"
+                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                  />
+                </div>
+              </>
+            )}
+
             <div className="grid gap-1.5">
               <Label htmlFor="telefone-cliente-rapido">
                 Telefone <span className="text-destructive">*</span>

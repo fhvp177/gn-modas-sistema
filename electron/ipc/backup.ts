@@ -31,6 +31,7 @@ export function registrarHandlersBackup(): void {
           pastaSecundaria: lerConfig('backup_pasta_secundaria') || '',
           frequencia: lerConfig('backup_frequencia_horas') || '2',
           aoFechar: lerConfig('backup_ao_fechar') || 'perguntar',
+          porVenda: lerConfig('backup_por_venda') === '1',
           alertaTamanho: lerConfig('backup_alerta_tamanho') === '1',
           senhaConfigurada: temSenhaConfigurada(),
         }

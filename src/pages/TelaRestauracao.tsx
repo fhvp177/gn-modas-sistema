@@ -27,6 +27,7 @@ const LABEL_SUBPASTA: Record<string, string> = {
   semanais: 'Semanais',
   mensais: 'Mensais',
   automaticos: 'Automáticos',
+  'por-venda': 'Por venda',
   'pre-restauracao': 'Pré-restauração',
   'pre-update': 'Pré-atualização',
 }

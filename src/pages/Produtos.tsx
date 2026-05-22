@@ -1,5 +1,5 @@
 import { FC, useEffect, useRef, useState } from 'react'
-import { Pencil, Trash2, Plus, Search, Barcode, RefreshCw, UserPlus, Printer } from 'lucide-react'
+import { Pencil, Trash2, Plus, Search, Barcode, RefreshCw, UserPlus, Printer, Tag } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -12,6 +12,7 @@ import {
 } from '@/components/ui/dialog'
 import BarcodeGenerator, { gerarEAN13 } from '@/components/BarcodeGenerator'
 import Paginacao from '@/components/ui/paginacao'
+import ModalCategorias from '@/components/ModalCategorias'
 
 const ITENS_POR_PAGINA = 20
 
@@ -46,7 +47,7 @@ const FORM_VAZIO: FormProduto = {
   fornecedor_id: ''
 }
 
-const CATEGORIAS_SUGERIDAS = ['Roupas', 'Brinquedos', 'Perfumes', 'Acessórios', 'Diversos']
+type Categoria = { id: number; nome: string; produtos_count: number }
 
 function gerarHtmlRelatorio(produtos: Produto[]): string {
   const data = new Date().toLocaleString('pt-BR', {
@@ -145,6 +146,8 @@ function gerarHtmlRelatorio(produtos: Produto[]): string {
 const Produtos: FC = () => {
   const [lista, setLista] = useState<Produto[]>([])
   const [fornecedores, setFornecedores] = useState<Fornecedor[]>([])
+  const [categorias, setCategorias] = useState<Categoria[]>([])
+  const [modalCategoriasAberto, setModalCategoriasAberto] = useState(false)
   const [busca, setBusca] = useState('')
   const [dialogAberto, setDialogAberto] = useState(false)
   const [editando, setEditando] = useState<Produto | null>(null)
@@ -165,12 +168,14 @@ const Produtos: FC = () => {
   const inputScanRef = useRef<HTMLInputElement>(null)
 
   const carregar = async () => {
-    const [rProdutos, rFornecedores] = await Promise.all([
+    const [rProdutos, rFornecedores, rCategorias] = await Promise.all([
       window.api.produtos.listar(),
-      window.api.fornecedores.listar()
+      window.api.fornecedores.listar(),
+      window.api.categorias.listar()
     ])
     if (rProdutos.success) setLista(rProdutos.data as Produto[])
     if (rFornecedores.success) setFornecedores(rFornecedores.data as Fornecedor[])
+    if (rCategorias.success) setCategorias(rCategorias.data)
   }
 
   useEffect(() => {
@@ -323,6 +328,10 @@ const Produtos: FC = () => {
       <div className="flex items-center justify-between mb-6">
         <h2 className="text-2xl font-bold">Produtos</h2>
         <div className="flex gap-2">
+          <Button variant="outline" onClick={() => setModalCategoriasAberto(true)}>
+            <Tag className="w-4 h-4 mr-2" />
+            Categorias
+          </Button>
           <Button variant="outline" onClick={imprimirRelatorio} disabled={lista.length === 0}>
             <Printer className="w-4 h-4 mr-2" />
             Imprimir Estoque
@@ -480,18 +489,30 @@ const Produtos: FC = () => {
 
               <div className="grid gap-1.5">
                 <Label htmlFor="categoria">Categoria</Label>
-                <Input
-                  id="categoria"
-                  list="categorias-lista"
-                  value={form.categoria}
-                  onChange={setF('categoria')}
-                  placeholder="Categoria"
-                />
-                <datalist id="categorias-lista">
-                  {CATEGORIAS_SUGERIDAS.map((c) => (
-                    <option key={c} value={c} />
-                  ))}
-                </datalist>
+                <div className="flex gap-2">
+                  <select
+                    id="categoria"
+                    value={form.categoria}
+                    onChange={setF('categoria')}
+                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  >
+                    <option value="">— Sem categoria —</option>
+                    {categorias.map((c) => (
+                      <option key={c.id} value={c.nome}>
+                        {c.nome}
+                      </option>
+                    ))}
+                  </select>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="icon"
+                    onClick={() => setModalCategoriasAberto(true)}
+                    title="Gerenciar categorias"
+                  >
+                    <Tag className="w-4 h-4" />
+                  </Button>
+                </div>
               </div>
 
               <div className="grid gap-1.5">
@@ -605,6 +626,12 @@ const Produtos: FC = () => {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <ModalCategorias
+        aberto={modalCategoriasAberto}
+        onFechar={() => setModalCategoriasAberto(false)}
+        onMudancas={carregar}
+      />
     </div>
   )
 }

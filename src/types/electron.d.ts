@@ -10,6 +10,62 @@ type StatusLicenca = {
   clienteId?: string
 }
 
+type SnapshotVenda = {
+  status: 'pago' | 'pendente' | 'inadimplente' | 'parcelado'
+  valor_pago: number
+  parcelas: Array<{ id: number; status: 'pendente' | 'pago' | 'inadimplente' }>
+}
+
+type MetricasDashboard = {
+  periodo_dias: number
+  granularidade: 'dia' | 'semana' | 'mes'
+  faturamento_atual: number
+  faturamento_anterior: number
+  num_vendas_atual: number
+  num_vendas_anterior: number
+  ticket_medio_atual: number
+  ticket_medio_anterior: number
+  serie_temporal: Array<{
+    rotulo: string
+    data_inicio: string
+    total: number
+    num_vendas: number
+  }>
+  top_produtos: Array<{
+    produto_id: number
+    nome: string
+    quantidade: number
+    receita: number
+  }>
+  top_categorias: Array<{
+    categoria: string
+    quantidade: number
+    receita: number
+  }>
+  distribuicao_pagamento: {
+    pago: { num: number; valor: number }
+    pendente: { num: number; valor: number }
+    parcelado: { num: number; valor: number }
+    inadimplente: { num: number; valor: number }
+  }
+  recebivel_futuro: {
+    proximos_30d: number
+    proximos_60d: number
+    proximos_90d: number
+  }
+  produtos_parados: Array<{
+    produto_id: number
+    nome: string
+    estoque: number
+    categoria: string | null
+  }>
+  estoque_baixo: Array<{
+    produto_id: number
+    nome: string
+    estoque: number
+  }>
+}
+
 interface Window {
   api: {
     produtos: {
@@ -33,13 +89,20 @@ interface Window {
       atualizar: (id: number, dados: unknown) => Promise<RespostaIPC>
       deletar: (id: number) => Promise<RespostaIPC>
     }
+    categorias: {
+      listar: () => Promise<RespostaIPC<Array<{ id: number; nome: string; produtos_count: number }>>>
+      criar: (nome: string) => Promise<RespostaIPC<{ id: number; nome: string }>>
+      atualizar: (id: number, nome: string) => Promise<RespostaIPC>
+      deletar: (id: number) => Promise<RespostaIPC>
+    }
     vendas: {
       listar: () => Promise<RespostaIPC>
       criar: (dados: unknown) => Promise<RespostaIPC>
-      atualizarStatus: (id: number, status: string) => Promise<RespostaIPC>
+      atualizarStatus: (id: number, status: string) => Promise<RespostaIPC<{ snapshot?: SnapshotVenda }>>
       buscarPorId: (id: number) => Promise<RespostaIPC>
-      pagarParcela: (parcelaId: number) => Promise<RespostaIPC>
-      registrarPagamentoParcial: (id: number, valor: number) => Promise<RespostaIPC>
+      pagarParcela: (parcelaId: number) => Promise<RespostaIPC<{ vendaId: number; snapshot: SnapshotVenda } | null>>
+      registrarPagamentoParcial: (id: number, valor: number) => Promise<RespostaIPC<{ snapshot?: SnapshotVenda }>>
+      restaurar: (id: number, snapshot: SnapshotVenda) => Promise<RespostaIPC>
       resumoDashboard: () => Promise<RespostaIPC>
     }
     licenca: {
@@ -48,6 +111,9 @@ interface Window {
     }
     impressao: {
       imprimir: (html: string) => Promise<RespostaIPC>
+    }
+    dashboard: {
+      metricas: (periodoDias: number) => Promise<RespostaIPC<MetricasDashboard>>
     }
     atualizacao: {
       obterInfo: () => Promise<RespostaIPC<{

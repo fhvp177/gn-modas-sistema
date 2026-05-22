@@ -1,5 +1,7 @@
 import { obterBancoDeDados } from '../conexao'
 
+export type TipoPessoa = 'fisica' | 'juridica'
+
 export type Cliente = {
   id: number
   nome: string
@@ -7,6 +9,9 @@ export type Cliente = {
   endereco: string | null
   cpf: string | null
   data_nascimento: string | null
+  tipo_pessoa: TipoPessoa
+  cnpj: string | null
+  razao_social: string | null
   data_cadastro: string
 }
 
@@ -16,6 +21,9 @@ export type DadosCliente = {
   endereco: string | null
   cpf: string | null
   data_nascimento: string | null
+  tipo_pessoa: TipoPessoa
+  cnpj: string | null
+  razao_social: string | null
 }
 
 export type ClienteInadimplente = {
@@ -45,8 +53,8 @@ export function criarCliente(dados: DadosCliente): Cliente {
   const db = obterBancoDeDados()
   const result = db
     .prepare(
-      `INSERT INTO clientes (nome, telefone, endereco, cpf, data_nascimento)
-       VALUES (@nome, @telefone, @endereco, @cpf, @data_nascimento)`
+      `INSERT INTO clientes (nome, telefone, endereco, cpf, data_nascimento, tipo_pessoa, cnpj, razao_social)
+       VALUES (@nome, @telefone, @endereco, @cpf, @data_nascimento, @tipo_pessoa, @cnpj, @razao_social)`
     )
     .run(dados)
   return { id: result.lastInsertRowid as number, data_cadastro: new Date().toISOString(), ...dados }
@@ -56,7 +64,9 @@ export function atualizarCliente(id: number, dados: DadosCliente): void {
   const db = obterBancoDeDados()
   db.prepare(
     `UPDATE clientes SET nome = @nome, telefone = @telefone, endereco = @endereco,
-     cpf = @cpf, data_nascimento = @data_nascimento WHERE id = @id`
+     cpf = @cpf, data_nascimento = @data_nascimento,
+     tipo_pessoa = @tipo_pessoa, cnpj = @cnpj, razao_social = @razao_social
+     WHERE id = @id`
   ).run({ ...dados, id })
 }
 

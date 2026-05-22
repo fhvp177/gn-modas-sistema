@@ -6,6 +6,7 @@ import { aplicar004ClientesCpfNascimento } from './004_clientes_cpf_nascimento'
 import { aplicar005Parcelas } from './005_parcelas'
 import { aplicar006ParceladoStatus } from './006_parcelado_status'
 import { aplicar007ValorPago } from './007_valor_pago'
+import { aplicar008ClientesPj } from './008_clientes_pj'
 
 type Migration = {
   nome: string
@@ -20,6 +21,7 @@ const MIGRATIONS: Migration[] = [
   { nome: '005_parcelas', aplicar: aplicar005Parcelas },
   { nome: '006_parcelado_status', aplicar: aplicar006ParceladoStatus },
   { nome: '007_valor_pago', aplicar: aplicar007ValorPago },
+  { nome: '008_clientes_pj', aplicar: aplicar008ClientesPj },
 ]
 
 export function executarMigrations(db: Database.Database): void {

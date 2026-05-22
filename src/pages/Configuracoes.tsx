@@ -14,6 +14,7 @@ type StatusBackup = {
   pastaSecundaria: string
   frequencia: string
   aoFechar: string
+  porVenda: boolean
   alertaTamanho: boolean
 }
 
@@ -42,6 +43,7 @@ const Configuracoes: FC = () => {
   const [ativo, setAtivo] = useState(false)
   const [frequencia, setFrequencia] = useState('2')
   const [aoFechar, setAoFechar] = useState('perguntar')
+  const [porVenda, setPorVenda] = useState(false)
   const [pastaPadrao, setPastaPadrao] = useState('')
   const [pastaSecundaria, setPastaSecundaria] = useState('')
   const [salvando, setSalvando] = useState(false)
@@ -56,6 +58,7 @@ const Configuracoes: FC = () => {
       setAtivo(s.ativo)
       setFrequencia(s.frequencia)
       setAoFechar(s.aoFechar)
+      setPorVenda(s.porVenda)
       setPastaPadrao(s.pastaPadrao)
       setPastaSecundaria(s.pastaSecundaria)
     }
@@ -99,6 +102,7 @@ const Configuracoes: FC = () => {
       await window.api.backup.gravarConfig('backup_ativo', ativo ? '1' : '0')
       await window.api.backup.gravarConfig('backup_frequencia_horas', frequencia)
       await window.api.backup.gravarConfig('backup_ao_fechar', aoFechar)
+      await window.api.backup.gravarConfig('backup_por_venda', porVenda ? '1' : '0')
       mostrarFeedback('ok', 'Configurações salvas com sucesso!')
       await carregarStatus()
     } catch {
@@ -259,6 +263,28 @@ const Configuracoes: FC = () => {
             <option value="24">A cada 24 horas</option>
             <option value="desativado">Desativado</option>
           </select>
+        </div>
+
+        {/* Backup a cada venda */}
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="font-medium text-sm">Fazer backup também a cada venda</p>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              Cria um backup em segundo plano após cada venda concluída. Mantém apenas os 30 mais recentes para não inchar o disco.
+            </p>
+          </div>
+          <button
+            onClick={() => setPorVenda(!porVenda)}
+            className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring shrink-0 ml-4 ${
+              porVenda ? 'bg-primary' : 'bg-muted-foreground/30'
+            }`}
+          >
+            <span
+              className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${
+                porVenda ? 'translate-x-6' : 'translate-x-1'
+              }`}
+            />
+          </button>
         </div>
 
         {/* Ao fechar */}

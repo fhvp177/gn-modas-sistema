@@ -13,6 +13,7 @@ import IndicadorBackupAtivo from './components/backup/IndicadorBackupAtivo'
 import AlertaBackupFalhando from './components/backup/AlertaBackupFalhando'
 import DialogoBackupAoFechar from './components/backup/DialogoBackupAoFechar'
 import ModalAtualizacaoDisponivel from './components/ModalAtualizacaoDisponivel'
+import { ToastProvider } from './components/ui/toast'
 
 type EstadoLicenca = 'verificando' | 'valida' | 'invalida'
 
@@ -56,29 +57,31 @@ const App: FC = () => {
   }
 
   return (
-    <MemoryRouter>
-      <div className="flex h-screen bg-background">
-        <Sidebar diasRestantes={diasRestantes} />
-        <div className="flex-1 flex flex-col overflow-hidden">
-          <AlertaBackupFalhando />
-          <main className="flex-1 overflow-auto">
-            <Routes>
-              <Route path="/" element={<Dashboard />} />
-              <Route path="/fornecedores" element={<Fornecedores />} />
-              <Route path="/produtos" element={<Produtos />} />
-              <Route path="/clientes" element={<Clientes />} />
-              <Route path="/vendas" element={<Vendas />} />
-              <Route path="/etiquetas" element={<EtiquetasA4 />} />
-              <Route path="/configuracoes" element={<Configuracoes />} />
-              <Route path="/restauracao" element={<TelaRestauracao />} />
-            </Routes>
-          </main>
+    <ToastProvider>
+      <MemoryRouter>
+        <div className="flex h-screen bg-background">
+          <Sidebar diasRestantes={diasRestantes} />
+          <div className="flex-1 flex flex-col overflow-hidden">
+            <AlertaBackupFalhando />
+            <main className="flex-1 overflow-auto">
+              <Routes>
+                <Route path="/" element={<Dashboard />} />
+                <Route path="/fornecedores" element={<Fornecedores />} />
+                <Route path="/produtos" element={<Produtos />} />
+                <Route path="/clientes" element={<Clientes />} />
+                <Route path="/vendas" element={<Vendas />} />
+                <Route path="/etiquetas" element={<EtiquetasA4 />} />
+                <Route path="/configuracoes" element={<Configuracoes />} />
+                <Route path="/restauracao" element={<TelaRestauracao />} />
+              </Routes>
+            </main>
+          </div>
         </div>
-      </div>
-      <IndicadorBackupAtivo />
-      <DialogoBackupAoFechar />
-      <ModalAtualizacaoDisponivel />
-    </MemoryRouter>
+        <IndicadorBackupAtivo />
+        <DialogoBackupAoFechar />
+        <ModalAtualizacaoDisponivel />
+      </MemoryRouter>
+    </ToastProvider>
   )
 }
 
