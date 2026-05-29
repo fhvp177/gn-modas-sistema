@@ -64,12 +64,15 @@ app.use('/admin/*', async (c, next) => {
 })
 
 // Cria um cliente novo e devolve a 1ª chave (válida por `diasIniciais`).
+// Aceita opcionalmente `valorCentavosRenovacao` pra fixar preço por cliente
+// — quando definido, sobrescreve o que o app manda em POST /cobranca.
 app.post('/admin/cliente', async (c) => {
   const body = await c.req.json<{
     clienteId: string
     nome: string
     contato?: string
     diasIniciais?: number
+    valorCentavosRenovacao?: number
   }>()
   if (!body.clienteId || !body.nome) {
     return c.json({ erro: 'clienteId e nome são obrigatórios' }, 400)
@@ -88,11 +91,29 @@ app.post('/admin/cliente', async (c) => {
     contato: body.contato,
     criadoEm: new Date().toISOString(),
     validadeAtual: expiracao,
-    ultimoPagamentoEm: new Date().toISOString()
+    ultimoPagamentoEm: new Date().toISOString(),
+    valorCentavosRenovacao: body.valorCentavosRenovacao
   }
   gravarCliente(cliente)
 
   return c.json({ cliente, chave })
+})
+
+// Atualiza o preço de renovação de um cliente existente. Manda
+// `valorCentavos: null` (ou omite) pra remover o preço fixo e voltar ao default.
+app.post('/admin/cliente/:clienteId/preco', async (c) => {
+  const clienteId = c.req.param('clienteId')
+  const body = await c.req.json<{ valorCentavos?: number | null }>()
+  const cliente = obterCliente(clienteId)
+  if (!cliente) return c.json({ erro: 'cliente não encontrado' }, 404)
+
+  const novoValor =
+    typeof body.valorCentavos === 'number' && body.valorCentavos > 0
+      ? body.valorCentavos
+      : undefined
+  const atualizado: Cliente = { ...cliente, valorCentavosRenovacao: novoValor }
+  gravarCliente(atualizado)
+  return c.json({ ok: true, cliente: atualizado })
 })
 
 // Atalho de dev: simula o webhook do EfiPay marcando uma cobrança como paga.
@@ -117,7 +138,10 @@ app.post('/cobranca', async (c) => {
   if (!cliente) return c.json({ erro: 'cliente não encontrado' }, 404)
 
   const diasContratados = body.diasContratados ?? 30
-  const valorCentavos = body.valorCentavos ?? 8000 // R$ 80,00 default
+  // Preço fixo do cliente (cadastrado por admin) sobrescreve o que o app
+  // manda. Permite cobrar valores diferentes por cliente sem release do app.
+  const valorCentavos =
+    cliente.valorCentavosRenovacao ?? body.valorCentavos ?? 8000
 
   const pix = await criarCobrancaPIX(valorCentavos)
   const cobranca: Cobranca = {

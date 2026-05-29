@@ -8,6 +8,10 @@ export type Cliente = {
   criadoEm: string // ISO date
   validadeAtual?: string // AAAA-MM-DD da licença atual ativa
   ultimoPagamentoEm?: string // ISO date do último pagamento confirmado
+  // Valor cobrado neste cliente nas próximas renovações (em centavos). Quando
+  // definido, sobrescreve o que o app envia em POST /cobranca. Permite cobrar
+  // valores diferentes por cliente sem precisar de release do app.
+  valorCentavosRenovacao?: number
 }
 
 export type StatusCobranca = 'pendente' | 'paga' | 'expirada'
