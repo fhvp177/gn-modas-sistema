@@ -7,6 +7,7 @@ import { inicializarBackupManager } from './backup/BackupManager'
 import { inicializarBackupAutomatico } from './backup/BackupAutomatico'
 import { registrarBackupAoFechar } from './backup/BackupAoFechar'
 import { registrarHandlersLicenca } from './ipc/licenca'
+import { registrarHandlersLicencaPagamento } from './ipc/licenca-pagamento'
 import { registrarHandlersFornecedores } from './ipc/fornecedores'
 import { registrarHandlersCategorias } from './ipc/categorias'
 import { registrarHandlersClientes } from './ipc/clientes'
@@ -66,6 +67,7 @@ app.whenReady().then(() => {
 
   // Registra todos os handlers IPC antes de criar a janela
   registrarHandlersLicenca()
+  registrarHandlersLicencaPagamento()
   registrarHandlersFornecedores()
   registrarHandlersCategorias()
   registrarHandlersClientes()

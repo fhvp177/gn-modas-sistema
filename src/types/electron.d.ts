@@ -1,6 +1,9 @@
 // Tipos da API exposta pelo preload via contextBridge
 // Mantido em sync com electron/preload.ts
 
+// Injetado em build-time pelo electron.vite.config.ts a partir de package.json.version
+declare const __APP_VERSION__: string
+
 type RespostaIPC<T = unknown> = { success: true; data: T } | { success: false; error: string }
 
 type StatusLicenca = {
@@ -9,6 +12,20 @@ type StatusLicenca = {
   mensagem: string
   clienteId?: string
   aviso?: string
+}
+
+type CobrancaPix = {
+  txid: string
+  clienteId: string
+  valorCentavos: number
+  diasContratados: number
+  status: 'pendente' | 'paga' | 'expirada'
+  qrcode: string
+  qrcodeBase64: string
+  criadaEm: string
+  expiraEm: string
+  pagaEm?: string
+  chaveLicencaGerada?: string
 }
 
 type SnapshotVenda = {
@@ -117,6 +134,12 @@ interface Window {
     licenca: {
       validar: () => Promise<RespostaIPC<StatusLicenca>>
       ativar: (chave: string) => Promise<RespostaIPC<StatusLicenca>>
+      obterClienteId: () => Promise<RespostaIPC<string | null>>
+      criarCobranca: (dados: {
+        diasContratados?: number
+        valorCentavos?: number
+      }) => Promise<RespostaIPC<CobrancaPix>>
+      consultarCobranca: (txid: string) => Promise<RespostaIPC<CobrancaPix>>
     }
     auth: {
       obterStatus: () => Promise<RespostaIPC<{

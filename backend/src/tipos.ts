@@ -1,0 +1,34 @@
+// Tipos compartilhados pelo backend. Espelham (em parte) os tipos do app
+// pra evitar divergência no formato dos dados trocados via HTTP.
+
+export type Cliente = {
+  clienteId: string
+  nome: string
+  contato?: string
+  criadoEm: string // ISO date
+  validadeAtual?: string // AAAA-MM-DD da licença atual ativa
+  ultimoPagamentoEm?: string // ISO date do último pagamento confirmado
+}
+
+export type StatusCobranca = 'pendente' | 'paga' | 'expirada'
+
+export type Cobranca = {
+  txid: string
+  clienteId: string
+  valorCentavos: number
+  diasContratados: number
+  status: StatusCobranca
+  qrcode: string // copia-e-cola PIX
+  qrcodeBase64: string // imagem do QR pra exibir no app
+  criadaEm: string // ISO
+  expiraEm: string // ISO
+  pagaEm?: string // ISO quando pago
+  chaveLicencaGerada?: string // chave assinada emitida após pagamento confirmado
+}
+
+// Configuração lida de env vars no boot. Centraliza tudo que vem de fora
+// pra que o código de domínio não dependa de process.env espalhado.
+export type Config = {
+  CHAVE_HMAC: string
+  ADMIN_TOKEN: string
+}

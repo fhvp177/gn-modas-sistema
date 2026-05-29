@@ -221,6 +221,22 @@ export function validarLicenca(): StatusLicenca {
   }
 }
 
+// Extrai o clienteId da licença salva localmente — sem validar expiração
+// ou HMAC. Usado pelo fluxo de renovação via PIX, onde a licença pode
+// estar vencida mas o vínculo com o cliente continua válido.
+export function extrairClienteIdLocal(): string | null {
+  const caminho = caminhoLicenca()
+  if (!existsSync(caminho)) return null
+  try {
+    const conteudo = readFileSync(caminho, 'utf8').trim()
+    const chave = descriptografar(conteudo)
+    const partes = chave.split(':')
+    return partes.length === 3 ? partes[0] : null
+  } catch {
+    return null
+  }
+}
+
 export function ativarLicenca(chave: string): StatusLicenca {
   const status = validarChave(chave)
   if (!status.valida) return status

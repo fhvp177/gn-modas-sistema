@@ -1,15 +1,27 @@
-import { FC, useState } from 'react'
+import { FC, useEffect, useState } from 'react'
+import { QrCode } from 'lucide-react'
 import logoGnModas from '@/assets/logo.png'
 
 type Props = {
   mensagemInicial: string
   onAtivar: (diasRestantes?: number) => void
+  onRenovarComPix: () => void
 }
 
-const LicencaBloqueada: FC<Props> = ({ mensagemInicial, onAtivar }) => {
+const LicencaBloqueada: FC<Props> = ({ mensagemInicial, onAtivar, onRenovarComPix }) => {
   const [chave, setChave] = useState('')
   const [erro, setErro] = useState(mensagemInicial)
   const [carregando, setCarregando] = useState(false)
+  const [temClienteSalvo, setTemClienteSalvo] = useState(false)
+
+  // Se houver uma licença anterior salva (mesmo vencida), o clienteId pode
+  // ser extraído e oferecemos a renovação direta por PIX. Sem licença prévia
+  // (primeira instalação), só o caminho manual continua válido.
+  useEffect(() => {
+    window.api.licenca.obterClienteId().then((resp) => {
+      if (resp.success && resp.data) setTemClienteSalvo(true)
+    })
+  }, [])
 
   const ativar = async () => {
     if (!chave.trim()) return
@@ -82,6 +94,26 @@ const LicencaBloqueada: FC<Props> = ({ mensagemInicial, onAtivar }) => {
           >
             {carregando ? 'Validando...' : 'Ativar Sistema'}
           </button>
+
+          {temClienteSalvo && (
+            <>
+              <div className="relative my-2">
+                <div className="absolute inset-0 flex items-center">
+                  <span className="w-full border-t border-slate-200" />
+                </div>
+                <div className="relative flex justify-center text-xs">
+                  <span className="bg-white px-2 text-slate-400">ou renove agora</span>
+                </div>
+              </div>
+              <button
+                onClick={onRenovarComPix}
+                className="w-full flex items-center justify-center gap-2 bg-emerald-600 text-white rounded-lg py-2.5 text-sm font-medium hover:bg-emerald-700 transition-colors"
+              >
+                <QrCode className="w-4 h-4" />
+                Renovar com PIX
+              </button>
+            </>
+          )}
         </div>
 
         <p className="text-center text-xs text-slate-400 mt-6">

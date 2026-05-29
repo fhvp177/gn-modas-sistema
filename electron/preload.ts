@@ -94,7 +94,14 @@ const api = {
   // Licença
   licenca: {
     validar: (): Promise<RespostaIPC> => ipcRenderer.invoke('licenca:validar'),
-    ativar: (chave: string): Promise<RespostaIPC> => ipcRenderer.invoke('licenca:ativar', chave)
+    ativar: (chave: string): Promise<RespostaIPC> => ipcRenderer.invoke('licenca:ativar', chave),
+    obterClienteId: (): Promise<RespostaIPC> => ipcRenderer.invoke('licenca:obterClienteId'),
+    criarCobranca: (dados: {
+      diasContratados?: number
+      valorCentavos?: number
+    }): Promise<RespostaIPC> => ipcRenderer.invoke('licenca:criarCobranca', dados),
+    consultarCobranca: (txid: string): Promise<RespostaIPC> =>
+      ipcRenderer.invoke('licenca:consultarCobranca', txid)
   },
 
   // Impressão

@@ -1,0 +1,28 @@
+# Configuração do app no Fly.io.
+# - region "gru" = São Paulo (menor latência pro Brasil)
+# - máquina shared-cpu-1x com 256MB (mais do que suficiente)
+# - volume "data" montado em /data pra SQLite persistir entre deploys
+
+app = "licenca-gnmodas"
+primary_region = "gru"
+
+[build]
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = "off"
+  auto_start_machines = true
+  min_machines_running = 1
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "256mb"
+
+[[mounts]]
+  source = "licenca_data"
+  destination = "/data"
+
+[env]
+  DB_PATH = "/data/licenca.db"
+  NODE_ENV = "production"
